@@ -1,195 +1,54 @@
-// =====================================================
-// EDUMANAGE - STUDENT MANAGEMENT SYSTEM
-// =====================================================
-
 const API_URL = "http://127.0.0.1:8000";
 
 let students = [];
-let studentToDelete = null;
 
 
-// =====================================================
-// PAGE LOAD
-// =====================================================
+/* ================= LOAD STUDENTS ================= */
 
-document.addEventListener("DOMContentLoaded", () => {
-
-    console.log("Frontend loaded");
-
-    // Load students from backend
-    getStudents();
-
-    // Add Student Form
-    const addForm = document.getElementById("addStudentForm");
-
-    if (addForm) {
-        addForm.addEventListener("submit", addStudent);
-    }
-
-    // Update Student Form
-    const updateForm = document.getElementById("updateStudentForm");
-
-    if (updateForm) {
-        updateForm.addEventListener("submit", updateStudent);
-    }
-
-    // Delete Student Form
-    const deleteForm = document.getElementById("deleteStudentForm");
-
-    if (deleteForm) {
-        deleteForm.addEventListener("submit", function (event) {
-
-            event.preventDefault();
-
-            const id = document.getElementById("deleteId").value;
-
-            if (!id) {
-                showToast(
-                    "Missing ID",
-                    "Please enter Student ID.",
-                    "error"
-                );
-                return;
-            }
-
-            openDeleteModal(Number(id));
-        });
-    }
-
-});
-
-
-// =====================================================
-// NAVIGATION
-// =====================================================
-
-function showSection(sectionId, clickedButton = null) {
-
-    document.querySelectorAll(".page-section").forEach(section => {
-        section.classList.remove("active");
-    });
-
-    const section = document.getElementById(sectionId);
-
-    if (section) {
-        section.classList.add("active");
-    }
-
-    document.querySelectorAll(".menu-item").forEach(button => {
-        button.classList.remove("active");
-    });
-
-    if (clickedButton) {
-        clickedButton.classList.add("active");
-    }
-
-    const titles = {
-        home: "Dashboard",
-        students: "Student Records",
-        add: "Add Student",
-        update: "Update Student",
-        delete: "Delete Student"
-    };
-
-    const title = titles[sectionId] || "Dashboard";
-
-    const pageTitle = document.getElementById("pageTitle");
-    const breadcrumb = document.getElementById("breadcrumbText");
-
-    if (pageTitle) {
-        pageTitle.textContent = title;
-    }
-
-    if (breadcrumb) {
-        breadcrumb.textContent = title;
-    }
-
-    window.scrollTo({
-        top: 0,
-        behavior: "smooth"
-    });
-}
-
-
-// =====================================================
-// GET STUDENTS
-// =====================================================
-
-async function getStudents() {
-
-    console.log("Getting students from:", `${API_URL}/students`);
+async function loadStudents() {
 
     try {
 
         const response = await fetch(`${API_URL}/students`);
 
         if (!response.ok) {
-            throw new Error(`Backend error: ${response.status}`);
+            throw new Error("Unable to load students");
         }
 
-        const data = await response.json();
-
-        console.log("Backend data:", data);
-
-        if (!Array.isArray(data)) {
-            throw new Error("Backend did not return student array");
-        }
-
-        students = data;
-
-        // Sort latest ID first
-        students.sort((a, b) => Number(b.id) - Number(a.id));
+        students = await response.json();
 
         displayStudents(students);
-        displayRecentStudents();
-        updateStatistics();
-
-        console.log("Students loaded successfully:", students.length);
+        updateDashboard();
 
     } catch (error) {
 
-        console.error("GET STUDENTS ERROR:", error);
+        console.error(error);
 
-        students = [];
+        document.getElementById("studentTable").innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align:center;">
+                    Unable to connect to backend
+                </td>
+            </tr>
+        `;
 
-        displayStudents([]);
-        displayRecentStudents();
-        updateStatistics();
-
-        showToast(
-            "Connection Error",
-            "Unable to connect to FastAPI backend.",
-            "error"
-        );
+        showMessage("Backend connection failed", "error");
     }
 }
 
 
-// =====================================================
-// DISPLAY ALL STUDENTS
-// =====================================================
+/* ================= DISPLAY STUDENTS ================= */
 
 function displayStudents(data) {
 
-    const table = document.getElementById("studentList");
+    const table = document.getElementById("studentTable");
 
-    const recordCount = document.getElementById("recordCount");
-
-    if (!table) {
-        console.error("studentList not found in HTML");
-        return;
-    }
-
-    if (recordCount) {
-        recordCount.textContent = data.length;
-    }
-
-    if (!data || data.length === 0) {
+    if (!data.length) {
 
         table.innerHTML = `
             <tr>
-                <td colspan="6" class="empty-state">
-                    No student records found.
+                <td colspan="6" style="text-align:center;">
+                    No students found
                 </td>
             </tr>
         `;
@@ -201,80 +60,45 @@ function displayStudents(data) {
 
     data.forEach(student => {
 
-        const id = student.id;
-
-        const name = student.name || "Unknown";
-
-        const course = student.course || "-";
-
-        const marks = Number(student.marks) || 0;
-
-        const passed = marks >= 40;
-
-        const firstLetter =
-            name.charAt(0).toUpperCase();
+        const passed = Number(student.marks) >= 40;
 
         const row = document.createElement("tr");
 
         row.innerHTML = `
+            <td><strong>#${student.id}</strong></td>
+
             <td>
-                <strong>#${id}</strong>
+                <strong>${escapeHTML(student.name)}</strong>
             </td>
 
             <td>
-                <div class="student-cell">
-
-                    <div class="student-avatar">
-                        ${escapeHTML(firstLetter)}
-                    </div>
-
-                    <div>
-                        <div class="student-name">
-                            ${escapeHTML(name)}
-                        </div>
-
-                        <div class="student-id">
-                            Student ID: ${id}
-                        </div>
-                    </div>
-
-                </div>
+                ${escapeHTML(student.course)}
             </td>
 
             <td>
-                ${escapeHTML(course)}
+                <strong>${student.marks}</strong>/100
             </td>
 
             <td>
-                <strong>${marks}</strong> / 100
-            </td>
-
-            <td>
-                <span class="status ${passed ? "pass" : "fail"}">
+                <span class="status-badge ${passed ? "passed" : "failed"}">
                     ${passed ? "Passed" : "Failed"}
                 </span>
             </td>
 
             <td>
-                <div class="action-buttons">
 
-                    <button
-                        class="action-btn edit-action"
-                        title="Update"
-                        onclick="prepareUpdate(${id})"
-                    >
-                        <i class="fa-solid fa-pen"></i>
-                    </button>
+                <button
+                    class="edit-btn"
+                    onclick="editStudent(${student.id})">
+                    Edit
+                </button>
 
-                    <button
-                        class="action-btn delete-action"
-                        title="Delete"
-                        onclick="openDeleteModal(${id})"
-                    >
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
+                <button
+                    class="small-delete"
+                    onclick="deleteStudentById(${student.id})">
+                    Delete
+                </button>
 
-                </div>
             </td>
         `;
 
@@ -283,299 +107,252 @@ function displayStudents(data) {
 }
 
 
-// =====================================================
-// RECENT STUDENTS
-// =====================================================
+/* ================= DASHBOARD ================= */
 
-function displayRecentStudents() {
-
-    const table =
-        document.getElementById("recentStudentList");
-
-    if (!table) {
-        console.error("recentStudentList not found in HTML");
-        return;
-    }
-
-    if (!students || students.length === 0) {
-
-        table.innerHTML = `
-            <tr>
-                <td colspan="5" class="empty-state">
-                    No student records available.
-                </td>
-            </tr>
-        `;
-
-        return;
-    }
-
-    table.innerHTML = "";
-
-    // Latest 5 students
-    const recentStudents = students.slice(0, 5);
-
-    recentStudents.forEach(student => {
-
-        const id = student.id;
-
-        const name = student.name || "Unknown";
-
-        const course = student.course || "-";
-
-        const marks = Number(student.marks) || 0;
-
-        const passed = marks >= 40;
-
-        const firstLetter =
-            name.charAt(0).toUpperCase();
-
-        const row = document.createElement("tr");
-
-        row.innerHTML = `
-            <td>
-                #${id}
-            </td>
-
-            <td>
-                <div class="student-cell">
-
-                    <div class="student-avatar">
-                        ${escapeHTML(firstLetter)}
-                    </div>
-
-                    <div>
-                        <div class="student-name">
-                            ${escapeHTML(name)}
-                        </div>
-                    </div>
-
-                </div>
-            </td>
-
-            <td>
-                ${escapeHTML(course)}
-            </td>
-
-            <td>
-                <strong>${marks}</strong> / 100
-            </td>
-
-            <td>
-                <span class="status ${passed ? "pass" : "fail"}">
-                    ${passed ? "Passed" : "Failed"}
-                </span>
-            </td>
-        `;
-
-        table.appendChild(row);
-    });
-}
-
-
-// =====================================================
-// STATISTICS
-// =====================================================
-
-function updateStatistics() {
+function updateDashboard() {
 
     const total = students.length;
 
-    const passed = students.filter(student => {
-        return Number(student.marks) >= 40;
-    }).length;
+    const passed = students.filter(
+        student => Number(student.marks) >= 40
+    ).length;
 
-    let totalMarks = 0;
+    const totalMarks = students.reduce(
+        (sum, student) => sum + Number(student.marks || 0),
+        0
+    );
 
-    students.forEach(student => {
-        totalMarks += Number(student.marks) || 0;
-    });
-
-    const average =
-        total > 0
-            ? totalMarks / total
-            : 0;
+    const average = total > 0
+        ? totalMarks / total
+        : 0;
 
     const courses = new Set(
         students.map(student => student.course)
     );
 
-    const totalStudents =
-        document.getElementById("totalStudents");
+    document.getElementById("totalStudents").textContent = total;
 
-    const passedStudents =
-        document.getElementById("passedStudents");
+    document.getElementById("passedStudents").textContent = passed;
 
-    const averageMarks =
-        document.getElementById("averageMarks");
+    document.getElementById("averageMarks").textContent =
+        average.toFixed(1);
 
-    const totalCourses =
-        document.getElementById("totalCourses");
-
-    const heroTotal =
-        document.getElementById("heroTotal");
-
-    const heroAverage =
-        document.getElementById("heroAverage");
-
-    if (totalStudents)
-        totalStudents.textContent = total;
-
-    if (passedStudents)
-        passedStudents.textContent = passed;
-
-    if (averageMarks)
-        averageMarks.textContent = average.toFixed(1);
-
-    if (totalCourses)
-        totalCourses.textContent = courses.size;
-
-    if (heroTotal)
-        heroTotal.textContent = total;
-
-    if (heroAverage)
-        heroAverage.textContent = average.toFixed(1);
+    document.getElementById("totalCourses").textContent =
+        courses.size;
 }
 
 
-// =====================================================
-// ADD STUDENT
-// =====================================================
+/* ================= ADD STUDENT ================= */
 
-async function addStudent(event) {
+document.getElementById("addForm").addEventListener(
+    "submit",
+    async function(event) {
 
-    event.preventDefault();
+        event.preventDefault();
 
-    const name =
-        document.getElementById("name").value.trim();
+        const name =
+            document.getElementById("addName").value.trim();
 
-    const course =
-        document.getElementById("course").value.trim();
+        const course =
+            document.getElementById("addCourse").value.trim();
 
-    const marks =
-        Number(document.getElementById("marks").value);
+        const marks =
+            Number(document.getElementById("addMarks").value);
 
-    if (!name || !course) {
 
-        showToast(
-            "Invalid Input",
-            "Please fill all required fields.",
-            "error"
-        );
+        if (!name || !course) {
 
-        return;
-    }
-
-    if (marks < 0 || marks > 100 || isNaN(marks)) {
-
-        showToast(
-            "Invalid Marks",
-            "Marks must be between 0 and 100.",
-            "error"
-        );
-
-        return;
-    }
-
-    const studentData = {
-        name: name,
-        course: course,
-        marks: marks
-    };
-
-    console.log("Adding student:", studentData);
-
-    try {
-
-        const response =
-            await fetch(`${API_URL}/students`, {
-
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify(studentData)
-            });
-
-        const result = await response.json();
-
-        console.log("ADD response:", result);
-
-        if (!response.ok) {
-            throw new Error(
-                result.detail ||
-                result.error ||
-                "Add student failed"
+            showMessage(
+                "Please fill all fields",
+                "error"
             );
+
+            return;
         }
 
-        document
-            .getElementById("addStudentForm")
-            .reset();
 
-        showToast(
-            "Student Added",
-            "Student record created successfully.",
-            "success"
-        );
+        if (isNaN(marks) || marks < 0 || marks > 100) {
 
-        await getStudents();
+            showMessage(
+                "Marks must be between 0 and 100",
+                "error"
+            );
 
-        setTimeout(() => {
-            showSection("students");
-        }, 500);
+            return;
+        }
 
-    } catch (error) {
 
-        console.error("ADD ERROR:", error);
+        try {
 
-        showToast(
-            "Add Failed",
-            error.message,
-            "error"
-        );
+            const response = await fetch(
+                `${API_URL}/students`,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        name: name,
+                        course: course,
+                        marks: marks
+                    })
+                }
+            );
+
+
+            const result = await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    result.detail || "Failed to add student"
+                );
+            }
+
+
+            showMessage(
+                "Student added successfully",
+                "success"
+            );
+
+
+            document.getElementById("addForm").reset();
+
+            await loadStudents();
+
+        } catch (error) {
+
+            console.error(error);
+
+            showMessage(
+                error.message,
+                "error"
+            );
+        }
     }
-}
+);
 
 
-// =====================================================
-// CLEAR ADD FORM
-// =====================================================
+/* ================= UPDATE STUDENT ================= */
 
-function clearAddForm() {
+document.getElementById("updateForm").addEventListener(
+    "submit",
+    async function(event) {
 
-    const form =
-        document.getElementById("addStudentForm");
+        event.preventDefault();
 
-    if (form) {
-        form.reset();
+
+        const id =
+            document.getElementById("updateId").value.trim();
+
+        const name =
+            document.getElementById("updateName").value.trim();
+
+        const course =
+            document.getElementById("updateCourse").value.trim();
+
+        const marks =
+            Number(document.getElementById("updateMarks").value);
+
+
+        if (!id || !name || !course) {
+
+            showMessage(
+                "Please fill all fields",
+                "error"
+            );
+
+            return;
+        }
+
+
+        if (isNaN(marks) || marks < 0 || marks > 100) {
+
+            showMessage(
+                "Marks must be between 0 and 100",
+                "error"
+            );
+
+            return;
+        }
+
+
+        try {
+
+            const response = await fetch(
+                `${API_URL}/students/${id}`,
+                {
+                    method: "PUT",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        name: name,
+                        course: course,
+                        marks: marks
+                    })
+                }
+            );
+
+
+            const result = await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    result.detail || "Update failed"
+                );
+            }
+
+
+            showMessage(
+                "Student updated successfully",
+                "success"
+            );
+
+
+            document.getElementById("updateForm").reset();
+
+            await loadStudents();
+
+        } catch (error) {
+
+            console.error(error);
+
+            showMessage(
+                error.message,
+                "error"
+            );
+        }
     }
-}
+);
 
 
-// =====================================================
-// PREPARE UPDATE
-// =====================================================
+/* ================= EDIT BUTTON ================= */
 
-function prepareUpdate(id) {
+function editStudent(id) {
 
-    const student =
-        students.find(
-            s => Number(s.id) === Number(id)
-        );
+    const student = students.find(
+        student => Number(student.id) === Number(id)
+    );
+
 
     if (!student) {
 
-        showToast(
-            "Student Not Found",
-            "The selected student does not exist.",
+        showMessage(
+            "Student not found",
             "error"
         );
 
         return;
     }
+
 
     document.getElementById("updateId").value =
         student.id;
@@ -589,221 +366,105 @@ function prepareUpdate(id) {
     document.getElementById("updateMarks").value =
         student.marks;
 
-    showSection("update");
+
+    document.getElementById("updateStudent")
+        .scrollIntoView({
+            behavior: "smooth"
+        });
 }
 
 
-// =====================================================
-// UPDATE STUDENT
-// =====================================================
+/* ================= DELETE FROM TABLE ================= */
 
-async function updateStudent(event) {
+async function deleteStudentById(id) {
 
-    event.preventDefault();
+    const confirmDelete = confirm(
+        `Are you sure you want to delete student ID ${id}?`
+    );
+
+
+    if (!confirmDelete) {
+        return;
+    }
+
+
+    await performDelete(id);
+}
+
+
+/* ================= DELETE FORM ================= */
+
+async function deleteStudent() {
 
     const id =
-        document.getElementById("updateId").value;
+        document.getElementById("deleteId").value.trim();
 
-    const name =
-        document.getElementById("updateName").value.trim();
-
-    const course =
-        document.getElementById("updateCourse").value.trim();
-
-    const marks =
-        Number(document.getElementById("updateMarks").value);
 
     if (!id) {
 
-        showToast(
-            "Missing ID",
-            "Student ID is required.",
+        showMessage(
+            "Please enter Student ID",
             "error"
         );
 
         return;
     }
 
-    if (!name || !course) {
 
-        showToast(
-            "Invalid Input",
-            "Please fill all fields.",
-            "error"
-        );
-
-        return;
-    }
-
-    if (marks < 0 || marks > 100 || isNaN(marks)) {
-
-        showToast(
-            "Invalid Marks",
-            "Marks must be between 0 and 100.",
-            "error"
-        );
-
-        return;
-    }
-
-    const studentData = {
-        name: name,
-        course: course,
-        marks: marks
-    };
-
-    console.log("Updating:", id, studentData);
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_URL}/students/${id}`,
-                {
-                    method: "PUT",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body:
-                        JSON.stringify(studentData)
-                }
-            );
-
-        const result = await response.json();
-
-        console.log("UPDATE response:", result);
-
-        if (!response.ok) {
-
-            throw new Error(
-                result.detail ||
-                result.error ||
-                "Update failed"
-            );
-        }
-
-        document
-            .getElementById("updateStudentForm")
-            .reset();
-
-        showToast(
-            "Student Updated",
-            "Student record updated successfully.",
-            "success"
-        );
-
-        await getStudents();
-
-        setTimeout(() => {
-            showSection("students");
-        }, 500);
-
-    } catch (error) {
-
-        console.error("UPDATE ERROR:", error);
-
-        showToast(
-            "Update Failed",
-            error.message,
-            "error"
-        );
-    }
-}
-
-
-// =====================================================
-// OPEN DELETE MODAL
-// =====================================================
-
-function openDeleteModal(id) {
-
-    studentToDelete = Number(id);
-
-    const modal =
-        document.getElementById("deleteModal");
-
-    if (modal) {
-        modal.classList.add("show");
-    }
-}
-
-
-// =====================================================
-// CLOSE DELETE MODAL
-// =====================================================
-
-function closeDeleteModal() {
-
-    const modal =
-        document.getElementById("deleteModal");
-
-    if (modal) {
-        modal.classList.remove("show");
-    }
-
-    studentToDelete = null;
-}
-
-
-// =====================================================
-// CONFIRM DELETE
-// =====================================================
-
-async function confirmDelete() {
-
-    if (!studentToDelete) {
-        return;
-    }
-
-    console.log(
-        "Deleting student:",
-        studentToDelete
+    const confirmDelete = confirm(
+        `Are you sure you want to delete student ID ${id}?`
     );
 
+
+    if (!confirmDelete) {
+        return;
+    }
+
+
+    await performDelete(id);
+}
+
+
+/* ================= DELETE API ================= */
+
+async function performDelete(id) {
+
     try {
 
-        const response =
-            await fetch(
-                `${API_URL}/students/${studentToDelete}`,
-                {
-                    method: "DELETE"
-                }
-            );
+        const response = await fetch(
+            `${API_URL}/students/${id}`,
+            {
+                method: "DELETE"
+            }
+        );
+
 
         const result = await response.json();
 
-        console.log("DELETE response:", result);
 
         if (!response.ok) {
 
             throw new Error(
-                result.detail ||
-                result.error ||
-                "Delete failed"
+                result.detail || "Delete failed"
             );
         }
 
-        closeDeleteModal();
 
-        showToast(
-            "Student Deleted",
-            "Student record removed successfully.",
+        showMessage(
+            "Student deleted successfully",
             "success"
         );
 
-        await getStudents();
+
+        document.getElementById("deleteId").value = "";
+
+        await loadStudents();
 
     } catch (error) {
 
-        console.error("DELETE ERROR:", error);
+        console.error(error);
 
-        closeDeleteModal();
-
-        showToast(
-            "Delete Failed",
+        showMessage(
             error.message,
             "error"
         );
@@ -811,130 +472,85 @@ async function confirmDelete() {
 }
 
 
-// =====================================================
-// SEARCH STUDENTS
-// =====================================================
+/* ================= SEARCH ================= */
 
 function searchStudents() {
 
-    const input =
-        document.getElementById("searchInput");
-
-    if (!input) {
-        return;
-    }
-
     const search =
-        input.value.toLowerCase().trim();
+        document.getElementById("searchInput")
+        .value
+        .toLowerCase()
+        .trim();
 
-    const filtered =
-        students.filter(student => {
 
-            const id =
-                String(student.id || "")
-                    .toLowerCase();
+    const filtered = students.filter(student =>
 
-            const name =
-                String(student.name || "")
-                    .toLowerCase();
+        String(student.id)
+            .toLowerCase()
+            .includes(search)
 
-            const course =
-                String(student.course || "")
-                    .toLowerCase();
+        ||
 
-            return (
-                id.includes(search) ||
-                name.includes(search) ||
-                course.includes(search)
-            );
-        });
+        student.name
+            .toLowerCase()
+            .includes(search)
+
+        ||
+
+        student.course
+            .toLowerCase()
+            .includes(search)
+
+    );
+
 
     displayStudents(filtered);
 }
 
 
-// =====================================================
-// TOAST
-// =====================================================
+/* ================= MESSAGE ================= */
 
-function showToast(
-    title,
-    message,
-    type = "success"
-) {
+function showMessage(text, type) {
 
-    const toast =
-        document.getElementById("messageBox");
+    const message =
+        document.getElementById("message");
 
-    if (!toast) {
-        alert(`${title}: ${message}`);
-        return;
-    }
 
-    const icon =
-        toast.querySelector(".toast-icon i");
+    message.textContent = text;
 
-    const toastTitle =
-        document.getElementById("toastTitle");
+    message.className =
+        `message ${type}`;
 
-    const toastMessage =
-        document.getElementById("toastMessage");
-
-    if (toastTitle) {
-        toastTitle.textContent = title;
-    }
-
-    if (toastMessage) {
-        toastMessage.textContent = message;
-    }
-
-    if (icon) {
-
-        if (type === "error") {
-
-            icon.className =
-                "fa-solid fa-circle-exclamation";
-
-        } else {
-
-            icon.className =
-                "fa-solid fa-check";
-        }
-    }
-
-    toast.classList.add("show");
 
     setTimeout(() => {
-        hideToast();
-    }, 3500);
+
+        message.className = "message";
+
+    }, 3000);
 }
 
 
-// =====================================================
-// HIDE TOAST
-// =====================================================
-
-function hideToast() {
-
-    const toast =
-        document.getElementById("messageBox");
-
-    if (toast) {
-        toast.classList.remove("show");
-    }
-}
-
-
-// =====================================================
-// HTML SAFETY
-// =====================================================
+/* ================= SECURITY ================= */
 
 function escapeHTML(value) {
 
     return String(value)
+
         .replace(/&/g, "&amp;")
+
         .replace(/</g, "&lt;")
+
         .replace(/>/g, "&gt;")
+
         .replace(/"/g, "&quot;")
+
         .replace(/'/g, "&#039;");
 }
+
+
+/* ================= START ================= */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    loadStudents
+);
